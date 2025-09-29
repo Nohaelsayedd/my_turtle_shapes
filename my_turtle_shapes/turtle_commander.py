@@ -5,6 +5,7 @@ from std_msgs.msg import String
 from turtlesim.msg import Pose
 from geometry_msgs.msg import Twist
 from turtlesim.srv import TeleportAbsolute
+from turtlesim.srv import SetPen
 import math
 import threading
 import time
@@ -23,6 +24,7 @@ class TurtleCommander(Node):
         self.pose_sub = self.create_subscription(Pose, '/turtle1/pose', self.pose_cb, 10)
         self.vel_pub = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
         self.teleport_cli = self.create_client(TeleportAbsolute, '/turtle1/teleport_absolute')
+        self.set_pen_cli = self.create_client(SetPen, '/turtle1/set_pen')
 
         self.pose = None
         self.drawing = False
@@ -58,17 +60,44 @@ class TurtleCommander(Node):
         self.vel_pub.publish(twist)
         self.get_logger().info('Stop requested: turtle stopped.')
 
-    def _teleport_turtle(self, x, y, theta=0.0):
-        if not self.teleport_cli.wait_for_service(timeout_sec=1.0):
-            self.get_logger().error('Teleport service not available! Is turtlesim running?')
+    def _set_pen(self, pen_on=True):
+        if not self.set_pen_cli.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error('SetPen service not available! Is turtlesim running?')
             return False
-        req = TeleportAbsolute.Request()
-        req.x = float(x)
-        req.y = float(y)
-        req.theta = float(theta)
-        future = self.teleport_cli.call_async(req)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=1.0)
-        return future.result() is not None
+        req = SetPen.Request()
+        req.r = 255
+        req.g = 255
+        req.b = 255
+        req.width = 3
+        req.off = not pen_on
+        future = self.set_pen_cli.call_async(req)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        if future.done() and future.result() is not None:
+            self.get_logger().info(f'Pen set to {"on" if pen_on else "off"}.')
+            return True
+        self.get_logger().error('Failed to set pen.')
+        return False
+
+    def _teleport_turtle(self, x, y, theta=0.0):
+        retries = 5
+        for attempt in range(retries):
+            if not self.teleport_cli.wait_for_service(timeout_sec=5.0):
+                self.get_logger().warn(f'Teleport service not available, attempt {attempt+1}/{retries}. Waiting...')
+                time.sleep(1.0)
+                continue
+            req = TeleportAbsolute.Request()
+            req.x = float(x)
+            req.y = float(y)
+            req.theta = float(theta)
+            future = self.teleport_cli.call_async(req)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            if future.done() and future.result() is not None:
+                self.get_logger().info('Teleport successful.')
+                return True
+            self.get_logger().warn(f'Teleport call failed, attempt {attempt+1}/{retries}. Retrying...')
+            time.sleep(1.0)
+        self.get_logger().error('Failed to teleport after retries. Is turtlesim running?')
+        return False
 
     # ---------- shape generators (centered & bigger) ----------
     def heart_points(self, n=300, scale=0.1, cx=5.5, cy=5.0):
@@ -173,9 +202,19 @@ class TurtleCommander(Node):
             pts = []
 
         if pts:
+            # Lift pen before teleporting
+            if not self._set_pen(pen_on=False):
+                self.get_logger().error('Failed to lift pen. Aborting draw.')
+                self.drawing = False
+                return
             # Teleport to first point
             if not self._teleport_turtle(pts[0][0], pts[0][1]):
                 self.get_logger().error('Failed to teleport. Aborting draw.')
+                self.drawing = False
+                return
+            # Set pen down after teleporting
+            if not self._set_pen(pen_on=True):
+                self.get_logger().error('Failed to set pen down. Aborting draw.')
                 self.drawing = False
                 return
 
