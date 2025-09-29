@@ -7,12 +7,12 @@ class ShapeNode(Node):
     def __init__(self):
         super().__init__('shape_node')
         self.pub = self.create_publisher(String, 'shape_selection', 10)
-        self.get_logger().info('shapeNode started. Type: heart / star / hexagram / stop / exit')
+        self.get_logger().info('shapeNode started. Type: heart / star / flower / stop / exit')
 
         # run input loop
         try:
             while rclpy.ok():
-                s = input('Enter shape (heart/star/hexagram/stop/exit): ').strip().lower()
+                s = input('Enter shape (heart/star/flower/stop/exit): ').strip().lower()
                 if not s:
                     continue
                 if s == 'exit':

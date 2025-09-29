@@ -45,8 +45,8 @@ class TurtleCommander(Node):
             self.stop_requested = True
             self._stop_turtle()
             return
-        if shape not in ('heart', 'star', 'hexagram'):
-            self.get_logger().warn('Unknown shape. Use: heart, star, hexagram, or stop.')
+        if shape not in ('heart', 'star', 'flower'):
+            self.get_logger().warn('Unknown shape. Use: heart, star, flower, or stop.')
             return
         if self.drawing:
             self.get_logger().info('Currently drawing — ignoring new request until finished.')
@@ -130,34 +130,22 @@ class TurtleCommander(Node):
         pts.append(verts[0])
         return pts
 
-    def hexagram_points(self, steps_per_edge=50, r=3.0, cx=5.5, cy=5.5):
+    def flower_points(self, num_squares=5, steps_per_edge=100, r=3.0, cx=5.5, cy=5.5):
         pts = []
-        # First triangle
-        for vertex_idx in range(3):
-            angle = vertex_idx * 2 * math.pi / 3  # 0, 120, 240 degrees
-            x = cx + r * math.cos(angle)
-            y = cy + r * math.sin(angle)
-            self.get_logger().info(f'Hexagram triangle 1, vertex {vertex_idx}: ({x:.3f}, {y:.3f})')
-            x_next = cx + r * math.cos(((vertex_idx + 1) % 3) * 2 * math.pi / 3)
-            y_next = cy + r * math.sin(((vertex_idx + 1) % 3) * 2 * math.pi / 3)
-            for s in range(steps_per_edge + 1):
-                alpha = s / float(steps_per_edge)
-                x_interp = x * (1 - alpha) + x_next * alpha
-                y_interp = y * (1 - alpha) + y_next * alpha
-                pts.append((x_interp, y_interp))
-        # Second triangle, rotated by 30 degrees (pi/6)
-        for vertex_idx in range(3):
-            angle = (vertex_idx * 2 * math.pi / 3) + math.pi / 6  # 30, 150, 270 degrees
-            x = cx + r * math.cos(angle)
-            y = cy + r * math.sin(angle)
-            self.get_logger().info(f'Hexagram triangle 2, vertex {vertex_idx}: ({x:.3f}, {y:.3f})')
-            x_next = cx + r * math.cos(((vertex_idx + 1) % 3) * 2 * math.pi / 3 + math.pi / 6)
-            y_next = cy + r * math.sin(((vertex_idx + 1) % 3) * 2 * math.pi / 3 + math.pi / 6)
-            for s in range(steps_per_edge + 1):
-                alpha = s / float(steps_per_edge)
-                x_interp = x * (1 - alpha) + x_next * alpha
-                y_interp = y * (1 - alpha) + y_next * alpha
-                pts.append((x_interp, y_interp))
+        for square_idx in range(num_squares):
+            rotation_angle = square_idx * 2 * math.pi / (num_squares * 2)  # Rotate by 18 degrees for 5 squares
+            for vertex_idx in range(4):
+                angle = (vertex_idx * math.pi / 2) + rotation_angle  # 0, 90, 180, 270 degrees + rotation
+                x = cx + r * math.cos(angle)
+                y = cy + r * math.sin(angle)
+                self.get_logger().info(f'Flower square {square_idx}, vertex {vertex_idx}: ({x:.3f}, {y:.3f})')
+                x_next = cx + r * math.cos(((vertex_idx + 1) % 4) * math.pi / 2 + rotation_angle)
+                y_next = cy + r * math.sin(((vertex_idx + 1) % 4) * math.pi / 2 + rotation_angle)
+                for s in range(steps_per_edge + 1):
+                    alpha = s / float(steps_per_edge)
+                    x_interp = x * (1 - alpha) + x_next * alpha
+                    y_interp = y * (1 - alpha) + y_next * alpha
+                    pts.append((x_interp, y_interp))
         pts.append(pts[0])  # Close the shape
         return pts
 
@@ -169,14 +157,9 @@ class TurtleCommander(Node):
 
         tx, ty = self.target_point
         tol = 0.01
-        K_ang = 2.0
-        # Shape-specific linear speed
-        if self.current_shape == 'heart':
-            K_lin = 11.25  # 150% increase from 4.5
-            vel_cap = 30.0  # 150% increase from 12.0
-        else:
-            K_lin = 4.5
-            vel_cap = 12.0
+        K_lin = 11.25  # 150% of original 4.5
+        K_ang = 3.0   # Increased for steadiness
+        vel_cap = 30.0  # 150% of original 12.0
 
         dx = tx - self.pose.x
         dy = ty - self.pose.y
@@ -188,6 +171,7 @@ class TurtleCommander(Node):
 
         desired_yaw = math.atan2(dy, dx)
         yaw_err = normalize_angle(desired_yaw - self.pose.theta)
+        self.get_logger().info(f'Moving to ({tx:.3f}, {ty:.3f}), dist={dist:.3f}, yaw_err={yaw_err:.3f}')
 
         twist = Twist()
         if abs(yaw_err) > 0.3:
@@ -229,8 +213,8 @@ class TurtleCommander(Node):
             pts = self.heart_points()
         elif shape_name == 'star':
             pts = self.star_points()
-        elif shape_name == 'hexagram':
-            pts = self.hexagram_points()
+        elif shape_name == 'flower':
+            pts = self.flower_points()
         else:
             pts = []
 
@@ -264,7 +248,6 @@ class TurtleCommander(Node):
         self.vel_pub.publish(Twist())
         self.get_logger().info(f'Finished drawing: {shape_name}')
         self.drawing = False
-        self.current_shape = None
         return
 
 def main(args=None):
