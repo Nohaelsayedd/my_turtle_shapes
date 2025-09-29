@@ -146,7 +146,7 @@ class TurtleCommander(Node):
 
         tx, ty = self.target_point
         tol = 0.01
-        K_lin = 1.5
+        K_lin = 4.5  # Increased from 3.0 to 4.5 (50% increase, 200% from original 1.5)
         K_ang = 2.0
 
         dx = tx - self.pose.x
@@ -166,7 +166,7 @@ class TurtleCommander(Node):
             twist.angular.z = K_ang * yaw_err
         else:
             twist.angular.z = K_ang * yaw_err
-            twist.linear.x = min(3.0, K_lin * dist)
+            twist.linear.x = min(12.0, K_lin * dist)  # Increased cap from 8.0 to 12.0
         self.vel_pub.publish(twist)
 
     def move_to(self, tx, ty):
