@@ -30,6 +30,7 @@ class TurtleCommander(Node):
         self.drawing = False
         self.stop_requested = False
         self.target_point = None  # (x, y) target for move_to
+        self.current_shape = None  # Track current shape for speed
         self.timer = self.create_timer(0.02, self.timer_cb)  # 50Hz control loop
 
         self.get_logger().info('turtleCommander ready. Waiting for shape_selection topic messages.')
@@ -44,18 +45,20 @@ class TurtleCommander(Node):
             self.stop_requested = True
             self._stop_turtle()
             return
-        if shape not in ('heart', 'star', 'butterfly'):
-            self.get_logger().warn('Unknown shape. Use: heart, star, butterfly, or stop.')
+        if shape not in ('heart', 'star', 'hexagram'):
+            self.get_logger().warn('Unknown shape. Use: heart, star, hexagram, or stop.')
             return
         if self.drawing:
             self.get_logger().info('Currently drawing — ignoring new request until finished.')
             return
+        self.current_shape = shape  # Set current shape
         t = threading.Thread(target=self.draw_shape, args=(shape,), daemon=True)
         t.start()
 
     def _stop_turtle(self):
         self.drawing = False
         self.target_point = None
+        self.current_shape = None
         twist = Twist()
         self.vel_pub.publish(twist)
         self.get_logger().info('Stop requested: turtle stopped.')
@@ -127,27 +130,53 @@ class TurtleCommander(Node):
         pts.append(verts[0])
         return pts
 
-    def butterfly_points(self, n=800, scale=0.065, cx=5.5, cy=5.5):
+    def hexagram_points(self, steps_per_edge=50, r=3.0, cx=5.5, cy=5.5):
         pts = []
-        tmax = 12 * math.pi
-        for i in range(n+1):
-            t = tmax * i / n
-            a = math.sin(t)*(math.exp(math.cos(t)) - 2*math.cos(4*t) - math.sin(t/12.0)**5)
-            b = math.cos(t)*(math.exp(math.cos(t)) - 2*math.cos(4*t) - math.sin(t/12.0)**5)
-            pts.append((cx + scale*a, cy + scale*b))
-        pts.append(pts[0])
+        # First triangle
+        for vertex_idx in range(3):
+            angle = vertex_idx * 2 * math.pi / 3  # 0, 120, 240 degrees
+            x = cx + r * math.cos(angle)
+            y = cy + r * math.sin(angle)
+            self.get_logger().info(f'Hexagram triangle 1, vertex {vertex_idx}: ({x:.3f}, {y:.3f})')
+            x_next = cx + r * math.cos(((vertex_idx + 1) % 3) * 2 * math.pi / 3)
+            y_next = cy + r * math.sin(((vertex_idx + 1) % 3) * 2 * math.pi / 3)
+            for s in range(steps_per_edge + 1):
+                alpha = s / float(steps_per_edge)
+                x_interp = x * (1 - alpha) + x_next * alpha
+                y_interp = y * (1 - alpha) + y_next * alpha
+                pts.append((x_interp, y_interp))
+        # Second triangle, rotated by 30 degrees (pi/6)
+        for vertex_idx in range(3):
+            angle = (vertex_idx * 2 * math.pi / 3) + math.pi / 6  # 30, 150, 270 degrees
+            x = cx + r * math.cos(angle)
+            y = cy + r * math.sin(angle)
+            self.get_logger().info(f'Hexagram triangle 2, vertex {vertex_idx}: ({x:.3f}, {y:.3f})')
+            x_next = cx + r * math.cos(((vertex_idx + 1) % 3) * 2 * math.pi / 3 + math.pi / 6)
+            y_next = cy + r * math.sin(((vertex_idx + 1) % 3) * 2 * math.pi / 3 + math.pi / 6)
+            for s in range(steps_per_edge + 1):
+                alpha = s / float(steps_per_edge)
+                x_interp = x * (1 - alpha) + x_next * alpha
+                y_interp = y * (1 - alpha) + y_next * alpha
+                pts.append((x_interp, y_interp))
+        pts.append(pts[0])  # Close the shape
         return pts
 
     # ---------- motion controller ----------
     def timer_cb(self):
-        if self.stop_requested or self.target_point is None or self.pose is None:
+        if not self.drawing or self.stop_requested or self.target_point is None or self.pose is None:
             self.vel_pub.publish(Twist())
             return
 
         tx, ty = self.target_point
         tol = 0.01
-        K_lin = 4.5  # Increased from 3.0 to 4.5 (50% increase, 200% from original 1.5)
         K_ang = 2.0
+        # Shape-specific linear speed
+        if self.current_shape == 'heart':
+            K_lin = 11.25  # 150% increase from 4.5
+            vel_cap = 30.0  # 150% increase from 12.0
+        else:
+            K_lin = 4.5
+            vel_cap = 12.0
 
         dx = tx - self.pose.x
         dy = ty - self.pose.y
@@ -166,7 +195,7 @@ class TurtleCommander(Node):
             twist.angular.z = K_ang * yaw_err
         else:
             twist.angular.z = K_ang * yaw_err
-            twist.linear.x = min(12.0, K_lin * dist)  # Increased cap from 8.0 to 12.0
+            twist.linear.x = min(vel_cap, K_lin * dist)
         self.vel_pub.publish(twist)
 
     def move_to(self, tx, ty):
@@ -182,9 +211,13 @@ class TurtleCommander(Node):
                 return False
 
         self.target_point = (tx, ty)
-        # Wait until we reach the target or are stopped
+        start_time = time.time()
         while self.target_point is not None and rclpy.ok() and not self.stop_requested:
             time.sleep(0.02)  # Let timer_cb handle movement
+            if time.time() - start_time > 10.0:  # Timeout after 10s
+                self.get_logger().error(f'Timeout moving to ({tx:.3f}, {ty:.3f}). Aborting.')
+                self.target_point = None
+                return False
         return not self.stop_requested
 
     def draw_shape(self, shape_name):
@@ -196,8 +229,8 @@ class TurtleCommander(Node):
             pts = self.heart_points()
         elif shape_name == 'star':
             pts = self.star_points()
-        elif shape_name == 'butterfly':
-            pts = self.butterfly_points()
+        elif shape_name == 'hexagram':
+            pts = self.hexagram_points()
         else:
             pts = []
 
@@ -208,6 +241,7 @@ class TurtleCommander(Node):
                 self.drawing = False
                 return
             # Teleport to first point
+            self.get_logger().info(f'Teleporting to first point: ({pts[0][0]:.3f}, {pts[0][1]:.3f})')
             if not self._teleport_turtle(pts[0][0], pts[0][1]):
                 self.get_logger().error('Failed to teleport. Aborting draw.')
                 self.drawing = False
@@ -218,15 +252,19 @@ class TurtleCommander(Node):
                 self.drawing = False
                 return
 
-        for (x, y) in pts:
+        for i, (x, y) in enumerate(pts):
             if self.stop_requested:
+                self.get_logger().info('Stop requested, aborting draw.')
                 break
+            self.get_logger().info(f'Moving to point {i}: ({x:.3f}, {y:.3f})')
             if not self.move_to(x, y):
+                self.get_logger().info('Move interrupted or failed.')
                 break
 
         self.vel_pub.publish(Twist())
         self.get_logger().info(f'Finished drawing: {shape_name}')
         self.drawing = False
+        self.current_shape = None
         return
 
 def main(args=None):
