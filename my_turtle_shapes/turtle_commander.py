@@ -81,7 +81,7 @@ class TurtleCommander(Node):
         pts.append(pts[0])
         return pts
 
-    def star_points(self, points=5, steps_per_edge=30, r_out=3.0, r_in=1.2, cx=5.5, cy=6.0):
+    def star_points(self, points=5, steps_per_edge=50, r_out=3.0, r_in=1.5, cx=5.5, cy=5.5):
         verts = []
         for i in range(points):
             angle_out = 2*math.pi * i / points
@@ -92,7 +92,7 @@ class TurtleCommander(Node):
         for i in range(len(verts)):
             x0,y0 = verts[i]
             x1,y1 = verts[(i+1) % len(verts)]
-            for s in range(steps_per_edge):
+            for s in range(steps_per_edge + 1):  # Include endpoint
                 alpha = s / float(steps_per_edge)
                 pts.append((x0*(1-alpha) + x1*alpha, y0*(1-alpha) + y1*alpha))
         pts.append(verts[0])
@@ -116,9 +116,9 @@ class TurtleCommander(Node):
             return
 
         tx, ty = self.target_point
-        tol = 0.03
-        K_lin = 2.0
-        K_ang = 3.5
+        tol = 0.01
+        K_lin = 1.5
+        K_ang = 2.0
 
         dx = tx - self.pose.x
         dy = ty - self.pose.y
@@ -132,7 +132,7 @@ class TurtleCommander(Node):
         yaw_err = normalize_angle(desired_yaw - self.pose.theta)
 
         twist = Twist()
-        if abs(yaw_err) > 0.2:
+        if abs(yaw_err) > 0.3:
             twist.linear.x = 0.0
             twist.angular.z = K_ang * yaw_err
         else:
