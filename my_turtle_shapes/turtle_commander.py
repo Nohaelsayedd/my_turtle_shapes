@@ -6,6 +6,7 @@ from turtlesim.msg import Pose
 from geometry_msgs.msg import Twist
 from turtlesim.srv import TeleportAbsolute
 from turtlesim.srv import SetPen
+from std_srvs.srv import Empty  # Correct import for Clear service
 import math
 import threading
 import time
@@ -25,6 +26,7 @@ class TurtleCommander(Node):
         self.vel_pub = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
         self.teleport_cli = self.create_client(TeleportAbsolute, '/turtle1/teleport_absolute')
         self.set_pen_cli = self.create_client(SetPen, '/turtle1/set_pen')
+        self.clear_cli = self.create_client(Empty, '/clear')  # Use Empty service type
 
         self.pose = None
         self.drawing = False
@@ -44,6 +46,9 @@ class TurtleCommander(Node):
         if shape == 'stop':
             self.stop_requested = True
             self._stop_turtle()
+            return
+        if shape == 'clear':
+            self._clear_screen()
             return
         if shape not in ('heart', 'star', 'flower'):
             self.get_logger().warn('Unknown shape. Use: heart, star, flower, or stop.')
@@ -101,6 +106,17 @@ class TurtleCommander(Node):
             time.sleep(1.0)
         self.get_logger().error('Failed to teleport after retries. Is turtlesim running?')
         return False
+
+    def _clear_screen(self):
+        if not self.clear_cli.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error('Clear service not available! Is turtlesim running?')
+            return
+        future = self.clear_cli.call_async(Empty.Request())
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        if future.done() and future.result() is not None:
+            self.get_logger().info('Screen cleared.')
+        else:
+            self.get_logger().error('Failed to clear screen.')
 
     # ---------- shape generators (centered & bigger) ----------
     def heart_points(self, n=300, scale=0.1, cx=5.5, cy=5.0):
