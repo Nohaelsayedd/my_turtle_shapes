@@ -130,24 +130,27 @@ class TurtleCommander(Node):
         pts.append(verts[0])
         return pts
 
-    def flower_points(self, num_squares=5, steps_per_edge=100, r=3.0, cx=5.5, cy=5.5):
-        pts = []
+    def flower_paths(self, num_squares=5, steps_per_edge=100, r=3.0, cx=5.5, cy=5.5):
+        paths = []
         for square_idx in range(num_squares):
-            rotation_angle = square_idx * 2 * math.pi / (num_squares * 2)  # Rotate by 18 degrees for 5 squares
+            rotation_angle = square_idx * 2 * math.pi / (num_squares * 2)  # Keep original rotation
+            verts = []
             for vertex_idx in range(4):
-                angle = (vertex_idx * math.pi / 2) + rotation_angle  # 0, 90, 180, 270 degrees + rotation
+                angle = (vertex_idx * math.pi / 2) + rotation_angle
                 x = cx + r * math.cos(angle)
                 y = cy + r * math.sin(angle)
-                self.get_logger().info(f'Flower square {square_idx}, vertex {vertex_idx}: ({x:.3f}, {y:.3f})')
-                x_next = cx + r * math.cos(((vertex_idx + 1) % 4) * math.pi / 2 + rotation_angle)
-                y_next = cy + r * math.sin(((vertex_idx + 1) % 4) * math.pi / 2 + rotation_angle)
+                verts.append((x, y))
+            verts.append(verts[0])  # Close the square for interpolation
+            # Interpolate edges
+            pts = []
+            for i in range(4):  # 4 edges
+                x0, y0 = verts[i]
+                x1, y1 = verts[i+1]
                 for s in range(steps_per_edge + 1):
                     alpha = s / float(steps_per_edge)
-                    x_interp = x * (1 - alpha) + x_next * alpha
-                    y_interp = y * (1 - alpha) + y_next * alpha
-                    pts.append((x_interp, y_interp))
-        pts.append(pts[0])  # Close the shape
-        return pts
+                    pts.append((x0 * (1 - alpha) + x1 * alpha, y0 * (1 - alpha) + y1 * alpha))
+            paths.append(pts)
+        return paths
 
     # ---------- motion controller ----------
     def timer_cb(self):
@@ -157,9 +160,9 @@ class TurtleCommander(Node):
 
         tx, ty = self.target_point
         tol = 0.01
-        K_lin = 11.25  # 150% of original 4.5
-        K_ang = 3.0   # Increased for steadiness
-        vel_cap = 30.0  # 150% of original 12.0
+        K_lin = 22.5  # Doubled from 11.25 for 100% faster
+        K_ang = 6.0   # Doubled from 3.0
+        vel_cap = 60.0  # Doubled from 30.0
 
         dx = tx - self.pose.x
         dy = ty - self.pose.y
@@ -211,39 +214,46 @@ class TurtleCommander(Node):
 
         if shape_name == 'heart':
             pts = self.heart_points()
+            paths = [pts]  # Single path
         elif shape_name == 'star':
             pts = self.star_points()
+            paths = [pts]  # Single path
         elif shape_name == 'flower':
-            pts = self.flower_points()
+            paths = self.flower_paths()
         else:
-            pts = []
+            paths = []
 
-        if pts:
-            # Lift pen before teleporting
-            if not self._set_pen(pen_on=False):
-                self.get_logger().error('Failed to lift pen. Aborting draw.')
-                self.drawing = False
-                return
-            # Teleport to first point
-            self.get_logger().info(f'Teleporting to first point: ({pts[0][0]:.3f}, {pts[0][1]:.3f})')
-            if not self._teleport_turtle(pts[0][0], pts[0][1]):
-                self.get_logger().error('Failed to teleport. Aborting draw.')
-                self.drawing = False
-                return
-            # Set pen down after teleporting
-            if not self._set_pen(pen_on=True):
-                self.get_logger().error('Failed to set pen down. Aborting draw.')
-                self.drawing = False
-                return
-
-        for i, (x, y) in enumerate(pts):
-            if self.stop_requested:
-                self.get_logger().info('Stop requested, aborting draw.')
-                break
-            self.get_logger().info(f'Moving to point {i}: ({x:.3f}, {y:.3f})')
-            if not self.move_to(x, y):
-                self.get_logger().info('Move interrupted or failed.')
-                break
+        if paths:
+            for path_idx, path in enumerate(paths):
+                if self.stop_requested:
+                    self.get_logger().info('Stop requested, aborting draw.')
+                    break
+                # Lift pen before teleporting
+                if not self._set_pen(pen_on=False):
+                    self.get_logger().error('Failed to lift pen. Aborting draw.')
+                    self.drawing = False
+                    return
+                # Teleport to first point
+                self.get_logger().info(f'Teleporting to path {path_idx} first point: ({path[0][0]:.3f}, {path[0][1]:.3f})')
+                if not self._teleport_turtle(path[0][0], path[0][1]):
+                    self.get_logger().error('Failed to teleport. Aborting draw.')
+                    self.drawing = False
+                    return
+                # Set pen down after teleporting
+                if not self._set_pen(pen_on=True):
+                    self.get_logger().error('Failed to set pen down. Aborting draw.')
+                    self.drawing = False
+                    return
+                # Draw the path starting from the second point (since already at first)
+                for i in range(1, len(path)):
+                    if self.stop_requested:
+                        self.get_logger().info('Stop requested, aborting draw.')
+                        break
+                    x, y = path[i]
+                    self.get_logger().info(f'Moving to point {i} in path {path_idx}: ({x:.3f}, {y:.3f})')
+                    if not self.move_to(x, y):
+                        self.get_logger().info('Move interrupted or failed.')
+                        break
 
         self.vel_pub.publish(Twist())
         self.get_logger().info(f'Finished drawing: {shape_name}')
