@@ -26,7 +26,7 @@ class TurtleCommander(Node):
         self.vel_pub = self.create_publisher(Twist, '/turtle1/cmd_vel', 10)
         self.teleport_cli = self.create_client(TeleportAbsolute, '/turtle1/teleport_absolute')
         self.set_pen_cli = self.create_client(SetPen, '/turtle1/set_pen')
-        self.clear_cli = self.create_client(Empty, '/clear')  # Use Empty service type
+        self.clear_cli = self.create_client(Empty, '/clear')  
 
         self.pose = None
         self.drawing = False
@@ -70,7 +70,6 @@ class TurtleCommander(Node):
 
     def _set_pen(self, pen_on=True):
         if not self.set_pen_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().error('SetPen service not available! Is turtlesim running?')
             return False
         req = SetPen.Request()
         req.r = 255
@@ -81,16 +80,13 @@ class TurtleCommander(Node):
         future = self.set_pen_cli.call_async(req)
         rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
         if future.done() and future.result() is not None:
-            self.get_logger().info(f'Pen set to {"on" if pen_on else "off"}.')
             return True
-        self.get_logger().error('Failed to set pen.')
         return False
 
     def _teleport_turtle(self, x, y, theta=0.0):
         retries = 5
         for attempt in range(retries):
             if not self.teleport_cli.wait_for_service(timeout_sec=5.0):
-                self.get_logger().warn(f'Teleport service not available, attempt {attempt+1}/{retries}. Waiting...')
                 time.sleep(1.0)
                 continue
             req = TeleportAbsolute.Request()
@@ -100,16 +96,12 @@ class TurtleCommander(Node):
             future = self.teleport_cli.call_async(req)
             rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
             if future.done() and future.result() is not None:
-                self.get_logger().info('Teleport successful.')
                 return True
-            self.get_logger().warn(f'Teleport call failed, attempt {attempt+1}/{retries}. Retrying...')
             time.sleep(1.0)
-        self.get_logger().error('Failed to teleport after retries. Is turtlesim running?')
         return False
 
     def _clear_screen(self):
         if not self.clear_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().error('Clear service not available! Is turtlesim running?')
             return
         future = self.clear_cli.call_async(Empty.Request())
         rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
@@ -176,9 +168,9 @@ class TurtleCommander(Node):
 
         tx, ty = self.target_point
         tol = 0.01
-        K_lin = 22.5  # Doubled from 11.25 for 100% faster
-        K_ang = 6.0   # Doubled from 3.0
-        vel_cap = 60.0  # Doubled from 30.0
+        K_lin = 22.5  
+        K_ang = 6.0   
+        vel_cap = 60.0  
 
         dx = tx - self.pose.x
         dy = ty - self.pose.y
@@ -190,7 +182,6 @@ class TurtleCommander(Node):
 
         desired_yaw = math.atan2(dy, dx)
         yaw_err = normalize_angle(desired_yaw - self.pose.theta)
-        self.get_logger().info(f'Moving to ({tx:.3f}, {ty:.3f}), dist={dist:.3f}, yaw_err={yaw_err:.3f}')
 
         twist = Twist()
         if abs(yaw_err) > 0.3:
@@ -203,12 +194,10 @@ class TurtleCommander(Node):
 
     def move_to(self, tx, ty):
         if self.pose is None:
-            self.get_logger().warn('No pose received yet. Waiting...')
             start_time = time.time()
             while self.pose is None and rclpy.ok() and not self.stop_requested:
                 time.sleep(0.02)  # Wait briefly instead of spinning
                 if time.time() - start_time > 5.0:  # Timeout after 5s
-                    self.get_logger().error('No pose received after timeout. Is turtlesim running?')
                     return False
             if self.pose is None or self.stop_requested:
                 return False
@@ -218,7 +207,6 @@ class TurtleCommander(Node):
         while self.target_point is not None and rclpy.ok() and not self.stop_requested:
             time.sleep(0.02)  # Let timer_cb handle movement
             if time.time() - start_time > 10.0:  # Timeout after 10s
-                self.get_logger().error(f'Timeout moving to ({tx:.3f}, {ty:.3f}). Aborting.')
                 self.target_point = None
                 return False
         return not self.stop_requested
@@ -242,33 +230,25 @@ class TurtleCommander(Node):
         if paths:
             for path_idx, path in enumerate(paths):
                 if self.stop_requested:
-                    self.get_logger().info('Stop requested, aborting draw.')
                     break
                 # Lift pen before teleporting
                 if not self._set_pen(pen_on=False):
-                    self.get_logger().error('Failed to lift pen. Aborting draw.')
                     self.drawing = False
                     return
                 # Teleport to first point
-                self.get_logger().info(f'Teleporting to path {path_idx} first point: ({path[0][0]:.3f}, {path[0][1]:.3f})')
                 if not self._teleport_turtle(path[0][0], path[0][1]):
-                    self.get_logger().error('Failed to teleport. Aborting draw.')
                     self.drawing = False
                     return
                 # Set pen down after teleporting
                 if not self._set_pen(pen_on=True):
-                    self.get_logger().error('Failed to set pen down. Aborting draw.')
                     self.drawing = False
                     return
                 # Draw the path starting from the second point (since already at first)
                 for i in range(1, len(path)):
                     if self.stop_requested:
-                        self.get_logger().info('Stop requested, aborting draw.')
                         break
                     x, y = path[i]
-                    self.get_logger().info(f'Moving to point {i} in path {path_idx}: ({x:.3f}, {y:.3f})')
                     if not self.move_to(x, y):
-                        self.get_logger().info('Move interrupted or failed.')
                         break
 
         self.vel_pub.publish(Twist())

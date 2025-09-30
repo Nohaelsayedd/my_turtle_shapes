@@ -7,7 +7,8 @@ class ShapeNode(Node):
     def __init__(self):
         super().__init__('shape_node')
         self.pub = self.create_publisher(String, 'shape_selection', 10)
-        self.get_logger().info('shapeNode started. Type: heart / star / flower / stop / clear / exit')
+        self.get_logger().info('shapeNode started. ' \
+        'Type: heart / star / flower / stop / clear / exit')
 
         # run input loop
         try:
@@ -28,7 +29,6 @@ class ShapeNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = ShapeNode()
-    # No spin needed after loop, as input is done; just shutdown
     node.destroy_node()
     rclpy.shutdown()
 
