@@ -31,15 +31,15 @@ This project utilizes the `turtlesim` package in ROS 2 to create a system where 
    <depend>std_srvs</depend>
 
 ## Build the workspace
--cd ~/ros2_ws
--colcon build --packages-select my_turtle_shapes
--source ~/ros2_ws/install/setup.bash
+- `cd ~/ros2_ws`
+- `colcon build --packages-select my_turtle_shapes`
+- `source ~/ros2_ws/install/setup.bash`
 
 ## Nodes and Usage 
 - shape_node: Accepts user input (heart, star, flower, stop, clear, exit) and publishes to the shape_selection topic.
 - turtle_commander: Subscribes to shape_selection, controls the turtle's movement, and draws the shapes or clears the screen.
-	1. ros2 run turtlesim turtlesim_node
-    2. ros2 run my_turtle_shapes shape_node
-    3. ros2 run my_turtle_shapes turtle_commander
+	1. `ros2 run turtlesim turtlesim_node`
+    2. `ros2 run my_turtle_shapes shape_node`
+    3. `ros2 run my_turtle_shapes turtle_commander`
 - A launch file is included to start commander node and turtlesim simultaneously. To use it:
-	ros2 launch my_turtle_shapes shapes.launch.py
+	`ros2 launch my_turtle_shapes shapes.launch.py`
