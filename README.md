@@ -1,6 +1,9 @@
 
 # My Turtle Shapes Project
 
+## Demo link:
+https://drive.google.com/file/d/1sP3gW5VSfomWfp6Vja62meInjQwViz_b/view?usp=sharing
+
 ## Overview
 This project utilizes the `turtlesim` package in ROS 2 to create a system where a turtle can draw three unique parametric shapes: a heart, a star, and a flower. The system includes interactive node-based control, allowing users to select shapes or clear the drawing area.
 
@@ -38,5 +41,5 @@ turtle_commander: Subscribes to shape_selection, controls the turtle's movement,
 	1.ros2 run turtlesim turtlesim_node
     2.ros2 run my_turtle_shapes shape_node
     3.ros2 run my_turtle_shapes turtle_commander
-A launch file is included to start both nodes simultaneously. To use it:
-	ros2 launch my_turtle_shapes turtle_shapes_launch.py
+A launch file is included to start commander node and turtlesim simultaneously. To use it:
+	ros2 launch my_turtle_shapes shapes.launch.py
