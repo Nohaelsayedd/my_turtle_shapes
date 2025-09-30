@@ -31,9 +31,9 @@ This project utilizes the `turtlesim` package in ROS 2 to create a system where 
    <depend>std_srvs</depend>
 
 ## Build the workspace
-cd ~/ros2_ws
-colcon build --packages-select my_turtle_shapes
-source ~/ros2_ws/install/setup.bash
+-cd ~/ros2_ws
+-colcon build --packages-select my_turtle_shapes
+-source ~/ros2_ws/install/setup.bash
 
 ## Nodes and Usage 
 - shape_node: Accepts user input (heart, star, flower, stop, clear, exit) and publishes to the shape_selection topic.
